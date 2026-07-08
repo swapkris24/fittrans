@@ -222,6 +222,59 @@
     .toast { position:fixed; bottom:calc(var(--nav-h) + 12px); right:14px; background:var(--acc2); color:#fff; padding:10px 18px; border-radius:10px; font-size:13px; font-weight:700; opacity:0; transform:translateY(10px); transition:.28s; pointer-events:none; z-index:999; box-shadow:0 4px 16px rgba(16,185,129,.3); }
     .toast.show { opacity:1; transform:translateY(0); }
 
+    /* Video bottom sheet */
+    .vsheet-backdrop {
+      position:fixed; inset:0; background:rgba(0,0,0,.55);
+      z-index:800; opacity:0; pointer-events:none; transition:opacity .25s;
+    }
+    .vsheet-backdrop.open { opacity:1; pointer-events:all; }
+
+    .vsheet {
+      position:fixed; bottom:0; left:0; right:0; z-index:801;
+      background:var(--sf); border-radius:20px 20px 0 0;
+      transform:translateY(100%); transition:transform .3s cubic-bezier(.32,.72,0,1);
+      padding-bottom:env(safe-area-inset-bottom);
+      box-shadow:0 -8px 40px rgba(0,0,0,.18);
+    }
+    .vsheet.open { transform:translateY(0); }
+
+    .vsheet-hdr {
+      display:flex; align-items:flex-start; justify-content:space-between;
+      padding:16px 16px 10px; gap:10px;
+    }
+    .vsheet-title { font-size:15px; font-weight:800; color:var(--txt); line-height:1.3; flex:1; }
+    .vsheet-close {
+      width:32px; height:32px; border-radius:50%; border:none;
+      background:var(--sf2); color:var(--txt2); font-size:17px;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
+      flex-shrink:0; transition:.15s;
+    }
+    .vsheet-close:hover { background:var(--acc3); color:#fff; }
+
+    .vsheet-drag {
+      width:40px; height:4px; border-radius:99px; background:var(--brd);
+      margin:10px auto 0; cursor:grab;
+    }
+
+    .vembed-wrap {
+      position:relative; width:100%; padding-top:56.25%;
+      background:#000; margin:0;
+    }
+    .vembed-wrap iframe {
+      position:absolute; inset:0; width:100%; height:100%; border:none;
+    }
+
+    .vsheet-footer {
+      padding:10px 16px 14px; display:flex; align-items:center; justify-content:space-between;
+    }
+    .vsheet-note { font-size:11px; color:var(--mut); line-height:1.4; flex:1; }
+    .vyt-link {
+      padding:8px 14px; border-radius:9px; background:#fef2f2; border:1px solid #fecaca;
+      color:#dc2626; font-size:12px; font-weight:700; text-decoration:none;
+      display:flex; align-items:center; gap:5px; transition:.15s; flex-shrink:0;
+    }
+    .vyt-link:hover { background:#dc2626; color:#fff; border-color:#dc2626; }
+
     /* Timeline */
     .tlwrap { background:var(--bg); border:1px solid var(--brd); border-radius:10px; padding:10px 12px; margin-bottom:12px; }
     .tlbar  { display:flex; border-radius:6px; overflow:hidden; height:12px; gap:2px; }
@@ -318,6 +371,23 @@
 </nav>
 
 <div class="toast" id="toast">✅ Saved!</div>
+
+<!-- Video bottom sheet -->
+<div class="vsheet-backdrop" id="vBackdrop" onclick="closeVideo()"></div>
+<div class="vsheet" id="vSheet">
+  <div class="vsheet-drag"></div>
+  <div class="vsheet-hdr">
+    <span class="vsheet-title" id="vTitle">Exercise</span>
+    <button class="vsheet-close" onclick="closeVideo()">✕</button>
+  </div>
+  <div class="vembed-wrap">
+    <iframe id="vFrame" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+  </div>
+  <div class="vsheet-footer">
+    <span class="vsheet-note">Tap ✕ or swipe down to close · Video plays from YouTube</span>
+    <a class="vyt-link" id="vYtLink" href="#" target="_blank" rel="noopener">▶ Open YouTube</a>
+  </div>
+</div>
 
 <script>
 // ──────────────────────────────────────────
@@ -694,10 +764,193 @@ function phNote(w) {
   return              'Phase 3 · Shred — Max intensity. 30s rest.';
 }
 
-function ytUrl(n) {
-  return 'https://www.youtube.com/results?search_query=how+to+'
-    + encodeURIComponent(n.replace(/\s*\(.*?\)/g,'').trim()) + '+exercise+form';
+// ──────────────────────────────────────────
+// VIDEO SHEET
+// ──────────────────────────────────────────
+// Maps exercise names to known YouTube video IDs for direct embeds.
+// Falls back to a search URL for anything not in the map.
+// All IDs verified live via YouTube oEmbed API (2026-07-08)
+const YT_IDS = {
+  // Warm-Up: Push (Mon)
+  'Shoulder Circles (forward + backward)':   'kkFHy3sCbi0',
+  'Cross-Body Arm Swings':                   'AsMMF3YWIIM',
+  'Wrist Rolls & Finger Spreads':            'mSZWSQSSEjE',
+  'Band Pull-Aparts (or towel)':             'eIq5CB9JfKE',
+  'Neck Rolls — slow, controlled':            '-dXpizOGkxI',
+
+  // Warm-Up: Core (Tue/Thu/Sat)
+  'Diaphragmatic Breathing (belly breath)':  'H-S1MtV5Pio',
+  'Dead Bug — arms only (no legs yet)':       '4XLEnwUr1d8',
+  'Standing Oblique Reach (side bend)':      'Vko-SJok-fk',
+  'Pelvic Tilt — lying on back':               '6Ayl6IXpgyM',
+  'Bird Dog — 3-sec hold each rep':           'wiFNA3sqjCA',
+
+  // Warm-Up: Pull (Wed)
+  'Wall Slides (arms slide up a wall)':      'OtgQDv7u1TM',
+  'Thoracic Extension over foam roller':     'H4u3J3Spcvw',
+  'Band Face Pulls (or resistance band row)':'8686PLZB_1Q',
+  'Doorway Chest Opener':                    'PWGuI3rTRx0',
+  'Scapular Retraction & Depression':        'ofzTUnnf0SQ',
+
+  // Warm-Up: Full Body (Fri)
+  'Glute Bridges — slow tempo':                '8bbE64NuDTU',
+  'Ankle Circles (both directions)':         'pPHkOXX-4GA',
+  'Hip Circles (standing, hands on hips)':   'jUft857xWzw',
+  'Seated Hip CARs (controlled articular)':  'hRMrq6G81p8',
+  'Toe Touch — reach down, hold 2 sec':       'X9btRQmMo1c',
+
+  // Warm-Up: Rest (Sun)
+  'Foam Roll — calves & shins':               'y9CDXyjjFNI',
+  'Neck Rolls — ultra slow':                  '-dXpizOGkxI',
+  'Gentle Spinal Wave (standing)':           'nuXxeRnfB70',
+  'Wrist & Elbow Circles':                   'mSZWSQSSEjE',
+  'Chest + Belly Deep Breathing':            'H-S1MtV5Pio',
+
+  // Warm-Up: shared general
+  'March in Place':                          'R0mMyV5OtcM',
+  'Standing Hip Circles':                    'jUft857xWzw',
+  'Arm Circles & Hip Rotations':             'lzR7tzI1JUI',
+  'Dynamic Leg Swings':                      '3l31E2cMGMk',
+  'Cat-Cow Stretch':                         'kqnua4rHVVA',
+
+  // Strength: Push
+  'Barbell / DB Chest Press':                'gRVjAtPip0Y',
+  'Incline Dumbbell Press':                  '0G2_XV7slIg',
+  'Overhead Shoulder Press':                 'qEwKCR5JCog',
+  'Lateral Raises':                          '3VcKaXpzqRo',
+  'Tricep Dips / Pushdowns':                 '0326dy_-CzM',
+  'Decline Push-Ups (finisher)':             'lx-49Yjqm-Q',
+
+  // Strength: Pull
+  'Pull-Ups / Lat Pulldown':                 'CAwf7n6Luuc',
+  'Bent-Over Barbell Rows':                  'FWJR5Ve8bnQ',
+  'Seated Cable Rows':                       'GZbfZ033f74',
+  'Face Pulls':                              '8686PLZB_1Q',
+  'Barbell / DB Bicep Curls':                'ykJmrZ5v0Oo',
+  'Hammer Curls (finisher)':                 'TwD-YGVP4Bk',
+
+  // Strength: Full Body
+  'Barbell Squats / Goblet Squats':          'ultWZbUMPL8',
+  'Romanian Deadlifts':                      'JCXUYuzwNrM',
+  'Reverse Lunges (Static)':                 'wrwwXE_x-pQ',
+  'Dumbbell Sumo Squats':                    '7BqURseCGSU',
+  'Glute Bridges':                           '8bbE64NuDTU',
+  'Plank with Shoulder Taps':                'gKA5LBy7WAI',
+
+  // Core
+  'Plank Hold':                              'ASdvN_XEl_c',
+  'Side Plank':                              'wP7xBF-LZxs',
+  'Leg Raises':                              'l4kQd9eWclE',
+  'Russian Twists':                          'wkD8rjkodUI',
+  'Bicycle Crunches':                        '9FGilxCbdz8',
+  'Dead Bug':                                '4XLEnwUr1d8',
+  'Mountain Climbers':                       'nmwgirgXLYM',
+  'Hollow Body Hold':                        'LlDNef_Ztsc',
+
+  // Cardio
+  'Cross-Trainer / Elliptical':              'EesEvYohy5o',
+  'Treadmill Brisk Walk (6–7 km/h, 3–5% incline)':     'vdsaHSr1H_E',
+  'Treadmill Brisk Walk (6.5–7.5 km/h, 4–6% incline)': 'vdsaHSr1H_E',
+  'Cooldown — reduce speed/resistance':         '',
+  'Low-Impact Step Touch (warm-up cardio)':  'R0mMyV5OtcM',
+  'Low-Impact Step Touch (circuit warm)':    'R0mMyV5OtcM',
+  'Inchworm':                                'VSp0z7Mp5IU',
+  'Sit-to-Stand (chair)':                    'jAkKklZh4aQ',
+  'Glute Bridges (elevated)':                '8bbE64NuDTU',
+  'Side Steps (lateral shuffle)':            'O9zzo7oiyK4',
+  'Outdoor brisk walk or treadmill (flat, 5–6 km/h)': 'vdsaHSr1H_E',
+
+  // Rest day
+  'Full-Body Foam Rolling':                  'y9CDXyjjFNI',
+  'Hip Flexor & Quad Stretch':               'SiC8v3Q_cbE',
+  'Thoracic Rotation':                       'gyew25Vaqj8',
+  'Pigeon Pose':                             'ckHZyA99Das',
+  "Child's Pose + Deep Breathing":           'eqVMAPM00DM',
+
+  // Cool-Down: Push (Mon)
+  'Doorway Chest Stretch':                   'PWGuI3rTRx0',
+  'Overhead Tricep Stretch':                 '-WFQhIRimnw',
+  'Cross-Body Shoulder Stretch':             'aIq0fLi8iak',
+  'Prone Cobra (light back bend)':           'hgjCwjO2YUY',
+
+  // Cool-Down: Core (Tue/Thu/Sat)
+  'Knees-to-Chest Hold':                     'iAaLLSALFMg',
+  'Supine Spinal Twist':                     'ezyMaQEaVaI',
+  "Child's Pose — arms extended":             'eqVMAPM00DM',
+  'Happy Baby Pose':                         'DsuQQMzFU-4',
+
+  // Cool-Down: Pull (Wed)
+  'Lat Stretch — arm overhead on wall':       '5HLQAVOvxNE',
+  'Bicep & Forearm Stretch (palm down)':     '-WFQhIRimnw',
+  'Thread the Needle (lying rotation)':      'gyew25Vaqj8',
+  "Child's Pose — wide arms":                 'eqVMAPM00DM',
+
+  // Cool-Down: Full Body (Fri)
+  'Standing Quad Stretch (wall support)':    'SiC8v3Q_cbE',
+  'Seated Hamstring Stretch (legs straight)':'X9btRQmMo1c',
+  'Figure-4 Glute Stretch (lying)':          'ckHZyA99Das',
+  'Calf Stretch — wall push':                 'pPHkOXX-4GA',
+
+  // Cool-Down: Rest/Sun long flow
+  'Forward Fold Stretch':                    'X9btRQmMo1c',
+  'Seated Forward Fold':                     'X9btRQmMo1c',
+  'Legs-Up-the-Wall':                        '_OQEIiZLY-0',
+  'Savasana — conscious body scan':           'eSeRjoolN2A',
+};
+
+function ytSearchUrl(name) {
+  return 'https://www.youtube.com/results?search_query='
+    + encodeURIComponent(name.replace(/\s*\(.*?\)/g,'').trim()) + '+exercise+form';
 }
+
+function openVideo(name) {
+  const cleanName = name.replace(/<[^>]+>/g, '').trim();
+  const vid = YT_IDS[cleanName];
+  const ytLink = vid
+    ? `https://www.youtube.com/watch?v=${vid}`
+    : ytSearchUrl(cleanName);
+
+  document.getElementById('vTitle').textContent = cleanName;
+  document.getElementById('vYtLink').href = ytLink;
+
+  const frame = document.getElementById('vFrame');
+  if (vid) {
+    frame.src = `https://www.youtube.com/embed/${vid}?autoplay=1&rel=0&modestbranding=1`;
+  } else {
+    // No direct ID — show a search redirect message in the frame area
+    frame.src = `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(cleanName + ' exercise form')}`;
+  }
+
+  document.getElementById('vSheet').classList.add('open');
+  document.getElementById('vBackdrop').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeVideo() {
+  document.getElementById('vSheet').classList.remove('open');
+  document.getElementById('vBackdrop').classList.remove('open');
+  document.body.style.overflow = '';
+  // Stop video by clearing src after transition
+  setTimeout(() => { document.getElementById('vFrame').src = ''; }, 300);
+}
+
+// Swipe-down to close
+(function() {
+  const sheet = document.getElementById('vSheet');
+  let startY = 0, dragging = false;
+  sheet.addEventListener('touchstart', e => { startY = e.touches[0].clientY; dragging = true; }, {passive:true});
+  sheet.addEventListener('touchmove', e => {
+    if (!dragging) return;
+    const dy = e.touches[0].clientY - startY;
+    if (dy > 0) sheet.style.transform = `translateY(${dy}px)`;
+  }, {passive:true});
+  sheet.addEventListener('touchend', e => {
+    const dy = e.changedTouches[0].clientY - startY;
+    sheet.style.transform = '';
+    if (dy > 80) closeVideo();
+    dragging = false;
+  });
+})();
 
 function renderDayPanel() {
   const cfg    = DCFG[curD];
@@ -752,16 +1005,16 @@ function renderSection(blocks) {
   const rows = blk.ex.map((ex, i) => {
     const id  = `${sk}_e${i}`;
     const d   = !!dx[id];
-    const url = ytUrl(ex.n);
+    const escaped = ex.n.replace(/'/g, "\\'");
     const badges = (ex.ks ? '<span class="ks-badge">knee-safe</span>' : '')
                  + (ex.machine ? '<span class="machine-badge">machine</span>' : '');
     return `<div class="exrow">
       <input type="checkbox" class="exchk" id="${id}" ${d?'checked':''}>
       <div class="exinfo">
-        <a class="exname${d?' xd':''}" id="nm_${id}" href="${url}" target="_blank" rel="noopener">${ex.n}${badges}</a>
+        <span class="exname${d?' xd':''}" id="nm_${id}" onclick="openVideo('${escaped}')" style="cursor:pointer">${ex.n}${badges}</span>
         <div class="exsets">${ex.s}</div>
       </div>
-      <a class="ytbtn" href="${url}" target="_blank" rel="noopener" title="Watch on YouTube">▶</a>
+      <button class="ytbtn" onclick="openVideo('${escaped}')" title="Watch demo video">▶</button>
     </div>`;
   }).join('');
 
